@@ -13,14 +13,18 @@ class WifiProvisionService {
 
   /// Returns true if the ESP32 is reachable in provisioning mode.
   static Future<bool> isReachable() async {
-    try {
-      final res = await http
-          .get(Uri.parse('http://$_esp32Ip/status'))
-          .timeout(const Duration(seconds: 5));
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
+    // Try multiple times — Android may route first attempt via mobile data
+    for (int i = 0; i < 3; i++) {
+      try {
+        final res = await http
+            .get(Uri.parse('http://$_esp32Ip/status'))
+            .timeout(const Duration(seconds: 5));
+        if (res.statusCode == 200) return true;
+      } catch (_) {
+        await Future.delayed(const Duration(seconds: 1));
+      }
     }
+    return false;
   }
 
   /// Sends WiFi credentials to the ESP32.
