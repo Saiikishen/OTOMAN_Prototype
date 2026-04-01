@@ -96,23 +96,33 @@ class Esp32Service {
 
     final command = targetState ? 'ON' : 'OFF';
     final motorKey = 'motor$motor';
-
-    // Listen for the ESP32's status echo BEFORE sending the command
-    final verified = statusStream
-        .where((s) => s[motorKey] == targetState)
-        .first
-        .timeout(const Duration(seconds: 5), onTimeout: () => {});
-
     final topic = 'esp32/motor$motor/control';
+
+    // Publish the command first
     final builder = MqttClientPayloadBuilder()..addString(command);
     _client.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
 
-    try {
-      final result = await verified;
-      return result.isNotEmpty; // empty map = timeout = no echo received
-    } catch (_) {
-      return false;
-    }
+    // Now wait up to 10s for the ESP32 to echo back the new state.
+    // We use a Completer so we can cancel cleanly on timeout.
+    final completer = Completer<bool>();
+    late StreamSubscription sub;
+
+    final timer = Timer(const Duration(seconds: 10), () {
+      if (!completer.isCompleted) {
+        sub.cancel();
+        completer.complete(false);
+      }
+    });
+
+    sub = statusStream.listen((status) {
+      if (status[motorKey] == targetState && !completer.isCompleted) {
+        timer.cancel();
+        sub.cancel();
+        completer.complete(true);
+      }
+    });
+
+    return completer.future;
   }
 
   /// Generic publish — used by other services (e.g. WifiProvisionService)
