@@ -242,10 +242,12 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   if (strcmp(topic, TOPIC_MOTOR1) == 0) {
     if      (strcmp(msg, "ON")  == 0) motor1Enable();
     else if (strcmp(msg, "OFF") == 0) motor1Disable();
+    publishStatus(); // echo updated state back to app
 
   } else if (strcmp(topic, TOPIC_MOTOR2) == 0) {
     if      (strcmp(msg, "ON")  == 0) motor2Enable();
     else if (strcmp(msg, "OFF") == 0) motor2Disable();
+    publishStatus(); // echo updated state back to app
 
   } else if (strcmp(topic, TOPIC_WIFI_CMD) == 0) {
     if (strcmp(msg, "RESET") == 0) {
@@ -254,28 +256,31 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       delay(300);
       clearCredentials();
       ESP.restart();
+      // no publishStatus() — device is restarting
     }
   }
-
-  publishStatus();
 }
 
 void connectMQTT() {
-  while (!mqttClient.connected()) {
-    Serial.printf("[MQTT] Connecting to %s...", MQTT_BROKER);
+  int attempts = 0;
+  while (!mqttClient.connected() && attempts < 5) {
+    Serial.printf("[MQTT] Connecting to %s... (attempt %d/5)\n", MQTT_BROKER, ++attempts);
     // Last Will: marks device offline if it drops unexpectedly
     if (mqttClient.connect(MQTT_CLIENT_ID, nullptr, nullptr,
                            TOPIC_ONLINE, 0, true, "false")) {
-      Serial.println(" Connected!");
+      Serial.println("[MQTT] Connected!");
       mqttClient.publish(TOPIC_ONLINE, "true", true);
       mqttClient.subscribe(TOPIC_MOTOR1);
       mqttClient.subscribe(TOPIC_MOTOR2);
       mqttClient.subscribe(TOPIC_WIFI_CMD);
       publishStatus();
-    } else {
-      Serial.printf(" Failed (rc=%d). Retry in 5 s...\n", mqttClient.state());
-      delay(5000);
+      return;
     }
+    Serial.printf("[MQTT] Failed (rc=%d). Retry in 5 s...\n", mqttClient.state());
+    delay(5000);
+  }
+  if (!mqttClient.connected()) {
+    Serial.println("[MQTT] Could not connect after 5 attempts. Will retry in loop.");
   }
 }
 
@@ -322,6 +327,8 @@ void setup() {
 
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setCallback(onMqttMessage);
+  mqttClient.setBufferSize(512);   // prevent silent publish failures on large payloads
+  mqttClient.setSocketTimeout(10); // 10 s socket timeout — avoids hanging on bad connection
   connectMQTT();
 }
 
