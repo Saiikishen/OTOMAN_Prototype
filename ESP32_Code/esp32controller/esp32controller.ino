@@ -73,6 +73,18 @@ const int MOTOR2_PIN     = 21;
 const int RESET_BUTTON   = 0;
 
 // ============================================================
+//  State — declared before LED helpers so updateLed() can read them
+//  FIX: moved up from below the LED section to resolve forward-reference error
+// ============================================================
+bool motor1_state = false;
+bool motor2_state = false;
+
+Preferences  prefs;
+WebServer    httpServer(80);
+WiFiClient   wifiClient;
+PubSubClient mqttClient(wifiClient);
+
+// ============================================================
 //  NeoPixel LED (WS2812B — GPIO 33)
 //  Red        — no WiFi / not connected
 //  Yellow     — AP provisioning mode
@@ -99,17 +111,6 @@ void updateLed() {
   if (motor1_state || motor2_state) ledDarkGreen();
   else                              ledGreen();
 }
-
-// ============================================================
-//  State
-// ============================================================
-bool motor1_state = false;
-bool motor2_state = false;
-
-Preferences  prefs;
-WebServer    httpServer(80);
-WiFiClient   wifiClient;
-PubSubClient mqttClient(wifiClient);
 
 // ============================================================
 //  Schedule State
@@ -221,11 +222,11 @@ void parseAndApplySchedules(const char* json) {
   slotCount = 0;
   for (JsonObject slot : doc.as<JsonArray>()) {
     if (slotCount >= MAX_SLOTS) break;
-    scheduleSlots[slotCount].motor        = slot["motor"]   | 0;
-    scheduleSlots[slotCount].hour         = slot["hour"]    | 0;
-    scheduleSlots[slotCount].minute       = slot["minute"]  | 0;
-    scheduleSlots[slotCount].turnOn       = strcmp(slot["action"] | "", "ON") == 0;
-    scheduleSlots[slotCount].enabled      = slot["enabled"] | false;
+    scheduleSlots[slotCount].motor         = slot["motor"]   | 0;
+    scheduleSlots[slotCount].hour          = slot["hour"]    | 0;
+    scheduleSlots[slotCount].minute        = slot["minute"]  | 0;
+    scheduleSlots[slotCount].turnOn        = strcmp(slot["action"] | "", "ON") == 0;
+    scheduleSlots[slotCount].enabled       = slot["enabled"] | false;
     scheduleSlots[slotCount].lastFiredHHMM = -1;  // FIX: reset double-fire guard
     slotCount++;
   }
