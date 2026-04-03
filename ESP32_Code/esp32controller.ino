@@ -39,6 +39,7 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <Adafruit_NeoPixel.h>
 
 // ============================================================
 //  MQTT Config
@@ -70,6 +71,34 @@ const int MOTOR1_PIN_ON  = 19;
 const int MOTOR1_PIN_OFF = 22;
 const int MOTOR2_PIN     = 21;
 const int RESET_BUTTON   = 0;
+
+// ============================================================
+//  NeoPixel LED (WS2812B — GPIO 33)
+//  Red        — no WiFi / not connected
+//  Yellow     — AP provisioning mode
+//  Green      — connected, all devices idle
+//  Dark Green — connected, at least one device active
+// ============================================================
+#define LED_PIN   33
+#define LED_COUNT 1
+
+Adafruit_NeoPixel led(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+void setLed(uint8_t r, uint8_t g, uint8_t b) {
+  led.setPixelColor(0, led.Color(r, g, b));
+  led.show();
+}
+
+void ledRed()       { setLed(180,   0,  0); }  // no WiFi / MQTT
+void ledYellow()    { setLed(180, 120,  0); }  // AP setup mode
+void ledGreen()     { setLed(  0, 180,  0); }  // connected, idle
+void ledDarkGreen() { setLed(  0,  60,  0); }  // connected, device active
+
+// Call after any motor state change to pick the right connected colour
+void updateLed() {
+  if (motor1_state || motor2_state) ledDarkGreen();
+  else                              ledGreen();
+}
 
 // ============================================================
 //  State
@@ -108,10 +137,10 @@ void pulsePin(int pin) {
   digitalWrite(pin, LOW);
 }
 
-void motor1Enable()  { if (!motor1_state) { pulsePin(MOTOR1_PIN_ON);  motor1_state = true;  Serial.println("[Motor1] ON");  } }
-void motor1Disable() { if (motor1_state)  { pulsePin(MOTOR1_PIN_OFF); motor1_state = false; Serial.println("[Motor1] OFF"); } }
-void motor2Enable()  { digitalWrite(MOTOR2_PIN, HIGH); motor2_state = true;  Serial.println("[Motor2] ON");  }
-void motor2Disable() { digitalWrite(MOTOR2_PIN, LOW);  motor2_state = false; Serial.println("[Motor2] OFF"); }
+void motor1Enable()  { if (!motor1_state) { pulsePin(MOTOR1_PIN_ON);  motor1_state = true;  Serial.println("[Motor1] ON");  updateLed(); } }
+void motor1Disable() { if (motor1_state)  { pulsePin(MOTOR1_PIN_OFF); motor1_state = false; Serial.println("[Motor1] OFF"); updateLed(); } }
+void motor2Enable()  { digitalWrite(MOTOR2_PIN, HIGH); motor2_state = true;  Serial.println("[Motor2] ON");  updateLed(); }
+void motor2Disable() { digitalWrite(MOTOR2_PIN, LOW);  motor2_state = false; Serial.println("[Motor2] OFF"); updateLed(); }
 
 // ============================================================
 //  MQTT — publishStatus
@@ -393,9 +422,11 @@ void connectMQTT() {
       mqttClient.subscribe(TOPIC_WIFI_CMD);
       mqttClient.subscribe(TOPIC_SCHEDULES);
       publishStatus();
+      updateLed();   // green or dark green depending on motor state
       return;
     }
     Serial.printf("[MQTT] Failed (rc=%d). Retry in 5 s...\n", mqttClient.state());
+    ledRed();        // still not connected
     delay(5000);
   }
   if (!mqttClient.connected())
@@ -417,9 +448,15 @@ void setup() {
   digitalWrite(MOTOR1_PIN_OFF, LOW);
   digitalWrite(MOTOR2_PIN,     LOW);
 
+  // LED init — red until connected
+  led.begin();
+  led.setBrightness(80);
+  ledRed();
+
   String savedSSID = getSavedSSID();
   if (savedSSID.length() == 0) {
-    startProvisioningMode(); // never returns
+    ledYellow();               // AP provisioning mode
+    startProvisioningMode();   // never returns
   }
 
   Serial.printf("[WiFi] Connecting to: %s\n", savedSSID.c_str());
@@ -467,6 +504,7 @@ void loop() {
   checkResetButton();
 
   if (WiFi.status() != WL_CONNECTED) {
+    ledRed();
     WiFi.reconnect();
     delay(1000);
     return;
