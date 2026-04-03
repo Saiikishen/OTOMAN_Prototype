@@ -4,6 +4,7 @@ import 'dart:ui';
 import '../theme/app_theme.dart';
 import 'dashboard_screen.dart';
 import 'provisioning_screen.dart';
+import '../services/storage_service.dart';
 
 class BuildingSelectionScreen extends StatefulWidget {
   const BuildingSelectionScreen({super.key});
@@ -21,6 +22,25 @@ class _BuildingSelectionScreenState extends State<BuildingSelectionScreen> {
       'icon': Icons.apartment_rounded,
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedNames();
+  }
+
+  Future<void> _loadSavedNames() async {
+    final names = await StorageService.loadBuildingNames();
+    final locs = await StorageService.loadBuildingLocations();
+    if (!mounted) return;
+    setState(() {
+      for (int i = 0; i < buildings.length; i++) {
+        final key = 'building_$i';
+        if (names.containsKey(key)) buildings[i]['name'] = names[key];
+        if (locs.containsKey(key)) buildings[i]['location'] = locs[key];
+      }
+    });
+  }
 
   Future<void> _editBuilding(int index) async {
     final nameCtrl = TextEditingController(
@@ -81,6 +101,17 @@ class _BuildingSelectionScreenState extends State<BuildingSelectionScreen> {
             ? buildings[index]['location']
             : locCtrl.text.trim();
       });
+      // persist
+      final names = {
+        for (int i = 0; i < buildings.length; i++)
+          'building_$i': buildings[i]['name'] as String,
+      };
+      final locs = {
+        for (int i = 0; i < buildings.length; i++)
+          'building_$i': buildings[i]['location'] as String,
+      };
+      StorageService.saveBuildingNames(names);
+      StorageService.saveBuildingLocations(locs);
     }
   }
 

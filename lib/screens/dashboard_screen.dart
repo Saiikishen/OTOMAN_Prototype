@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/device_control_sheets.dart';
 import '../services/esp32_service.dart';
 import '../services/scheduler_service.dart';
+import '../services/storage_service.dart';
 import '../models/schedule_entry.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -37,6 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedNames();
     _fetchInitialState();
     SchedulerService.onScheduledToggle = (deviceId, state) {
       if (!mounted) return;
@@ -46,6 +48,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
     };
     SchedulerService.start();
+  }
+
+  Future<void> _loadSavedNames() async {
+    final saved = await StorageService.loadDeviceNames();
+    if (!mounted) return;
+    setState(() {
+      for (final device in devices) {
+        final id = device['id'] as String;
+        if (saved.containsKey(id)) device['name'] = saved[id];
+      }
+    });
   }
 
   @override
@@ -181,7 +194,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
     if (confirmed == true && mounted && ctrl.text.trim().isNotEmpty) {
-      setState(() => devices[index]['name'] = ctrl.text.trim());
+      final newName = ctrl.text.trim();
+      setState(() => devices[index]['name'] = newName);
+      // persist
+      final allNames = {
+        for (final d in devices) d['id'] as String: d['name'] as String,
+      };
+      allNames[devices[index]['id'] as String] = newName;
+      StorageService.saveDeviceNames(allNames);
     }
   }
 
