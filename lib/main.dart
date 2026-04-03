@@ -15,7 +15,7 @@ class OtomanApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'OTOMAN - Intelligent Living',
+      title: 'Otoman',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       home: const SplashScreen(),
