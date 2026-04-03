@@ -461,6 +461,7 @@ void setup() {
   }
 
   Serial.printf("[WiFi] Connecting to: %s\n", savedSSID.c_str());
+  WiFi.setAutoReconnect(false); // we handle reconnect manually — more reliable
   WiFi.begin(savedSSID.c_str(), getSavedPassword().c_str());
 
   int attempts = 0;
@@ -506,8 +507,29 @@ void loop() {
 
   if (WiFi.status() != WL_CONNECTED) {
     ledRed();
-    WiFi.reconnect();
+    Serial.println("[WiFi] Disconnected — attempting reconnect...");
+
+    // Full disconnect + re-begin is more reliable than WiFi.reconnect() on ESP32
+    WiFi.disconnect();
     delay(1000);
+    WiFi.begin(getSavedSSID().c_str(), getSavedPassword().c_str());
+
+    // Wait up to 15 s for reconnection
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+      delay(500);
+      Serial.print(".");
+      attempts++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("\n[WiFi] Reconnected. IP: %s\n", WiFi.localIP().toString().c_str());
+      // Re-sync NTP after reconnect
+      configTime(UTC_OFFSET_SECONDS, 0, "pool.ntp.org", "time.nist.gov");
+    } else {
+      Serial.println("\n[WiFi] Reconnect failed — will retry.");
+      delay(10000); // back off 10 s before next attempt
+    }
     return;
   }
 
