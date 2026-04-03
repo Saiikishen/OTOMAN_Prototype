@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -35,11 +36,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     },
   ];
 
+  bool _esp32Online = false;
+  StreamSubscription<bool>? _onlineSub;
+
   @override
   void initState() {
     super.initState();
     _loadSavedNames();
     _fetchInitialState();
+    _esp32Online = Esp32Service.esp32Online;
+    _onlineSub = Esp32Service.onlineStream.listen((online) {
+      if (mounted) setState(() => _esp32Online = online);
+    });
     SchedulerService.onScheduledToggle = (deviceId, state) {
       if (!mounted) return;
       setState(() {
@@ -63,6 +71,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _onlineSub?.cancel();
     SchedulerService.onScheduledToggle = null;
     super.dispose();
   }
@@ -359,6 +368,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 letterSpacing: 1.2,
                               ),
                             ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 400),
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _esp32Online
+                                      ? const Color(0xFF4CAF50)
+                                      : Colors.redAccent,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          (_esp32Online
+                                                  ? const Color(0xFF4CAF50)
+                                                  : Colors.redAccent)
+                                              .withOpacity(0.5),
+                                      blurRadius: 6,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _esp32Online ? 'ESP32 ONLINE' : 'ESP32 OFFLINE',
+                                style: TextStyle(
+                                  color: _esp32Online
+                                      ? const Color(0xFF4CAF50)
+                                      : Colors.redAccent,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

@@ -16,7 +16,15 @@ class SchedulerService {
 
   static void upsertSchedule(DeviceSchedule schedule) {
     _schedules[schedule.deviceId] = schedule;
-    StorageService.saveSchedules(_schedules); // persist immediately
+    StorageService.saveSchedules(_schedules);
+    Esp32Service.publishSchedules(_schedules);
+  }
+
+  /// Called when ESP32 comes back online — re-syncs all schedules to its NVS
+  static void republishSchedules() {
+    if (_schedules.isNotEmpty) {
+      Esp32Service.publishSchedules(_schedules);
+    }
   }
 
   static DeviceSchedule getOrCreate(String deviceId) {

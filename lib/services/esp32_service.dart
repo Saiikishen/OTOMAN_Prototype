@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:uuid/uuid.dart';
+import '../models/schedule_entry.dart';
+import 'scheduler_service.dart';
 
 class Esp32Service {
   static MqttServerClient _client = _createClient();
@@ -18,6 +21,12 @@ class Esp32Service {
       StreamController<Map<String, bool>>.broadcast();
 
   static Stream<Map<String, bool>> get statusStream => _statusController.stream;
+
+  // ESP32 online status — updated from esp32/online topic
+  static final _onlineController = StreamController<bool>.broadcast();
+  static Stream<bool> get onlineStream => _onlineController.stream;
+  static bool _esp32Online = false;
+  static bool get esp32Online => _esp32Online;
 
   static bool get isConnected =>
       _client.connectionStatus?.state == MqttConnectionState.connected;
@@ -42,6 +51,7 @@ class Esp32Service {
     if (!isConnected) return;
 
     _client.subscribe('esp32/status', MqttQos.atLeastOnce);
+    _client.subscribe('esp32/online', MqttQos.atLeastOnce);
 
     // ✅ only attach the listener once
     if (!_listenerAttached) {
@@ -50,9 +60,22 @@ class Esp32Service {
         List<MqttReceivedMessage<MqttMessage>> messages,
       ) {
         final msg = messages[0].payload as MqttPublishMessage;
+        final topic = messages[0].topic;
         final payload = MqttPublishPayload.bytesToStringAsString(
           msg.payload.message,
         );
+
+        if (topic == 'esp32/online') {
+          final online = payload.trim() == 'true';
+          _esp32Online = online;
+          _onlineController.add(online);
+          // Re-publish schedules when ESP32 comes back online
+          if (online) {
+            SchedulerService.republishSchedules();
+          }
+          return;
+        }
+
         try {
           final data = jsonDecode(payload) as Map<String, dynamic>;
           _statusController.add({
@@ -129,6 +152,49 @@ class Esp32Service {
   static void publishRaw(String topic, MqttClientPayloadBuilder builder) {
     if (!isConnected) return;
     _client.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
+  }
+
+  /// Publishes the full schedule list to the ESP32 as a retained message.
+  /// The ESP32 saves this to NVS and runs it independently of the app.
+  static Future<void> publishSchedules(
+    Map<String, DeviceSchedule> schedules,
+  ) async {
+    await connect();
+    if (!isConnected) return;
+
+    final slots = <Map<String, dynamic>>[];
+    for (final schedule in schedules.values) {
+      final motorNum = int.tryParse(schedule.deviceId.replaceAll('motor', ''));
+      if (motorNum == null) continue;
+      for (final slot in schedule.slots) {
+        slots.add({
+          'motor': motorNum,
+          'hour': slot.hour,
+          'minute': slot.minute,
+          'action': slot.action == ScheduleAction.turnOn ? 'ON' : 'OFF',
+          'enabled': slot.enabled,
+        });
+      }
+    }
+
+    final payload = jsonEncode(slots);
+
+    // Guard: NVS string limit on ESP32 is ~4000 bytes
+    if (payload.length > 3800) {
+      debugPrint(
+        '[Esp32Service] Schedule payload too large (${payload.length} bytes) — not published',
+      );
+      return;
+    }
+
+    final builder = MqttClientPayloadBuilder()..addString(payload);
+    // QoS 1 + retain: ESP32 gets it on reconnect even if offline when published
+    _client.publishMessage(
+      'esp32/schedules',
+      MqttQos.atLeastOnce,
+      builder.payload!,
+      retain: true,
+    );
   }
 
   static void dispose() {
