@@ -3,25 +3,20 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import 'package:mqtt_client/mqtt_browser_client.dart';
 import 'package:uuid/uuid.dart';
 import '../models/schedule_entry.dart';
 import 'scheduler_service.dart';
+import 'mqtt_client_factory_io.dart'
+    if (dart.library.html) 'mqtt_client_factory_web.dart';
 
 class Esp32Service {
   static MqttServerClient _client = _createClient();
 
   static MqttServerClient _createClient() {
     final clientId = 'flutter-app-${Uuid().v4().substring(0, 8)}';
-    if (kIsWeb) {
-      final client = MqttBrowserClient(
-        'ws://broker.hivemq.com:8000/mqtt',
-        clientId,
-      );
-      return client as MqttServerClient;
-    }
-    return MqttServerClient('broker.hivemq.com', clientId);
+    return createMqttClient('broker.hivemq.com', clientId);
   }
+
 
   static StreamController<Map<String, bool>> _statusController =
       StreamController<Map<String, bool>>.broadcast();
