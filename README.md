@@ -50,8 +50,8 @@ OTOMAN is a production-grade Flutter application that communicates with an ESP32
 │  Normal mode:   WiFi STA + MQTT PubSubClient            │
 │  Provision mode: WiFi AP + HTTP WebServer               │
 │                                                         │
-│  Motor 1: Dual-pin latching relay (GPIO 26 / 27)        │
-│  Motor 2: Single-pin relay        (GPIO 25)             │
+│  Motor 1: Dual-pin latching relay (GPIO 19/22)          │
+│  Motor 2: Single-pin relay        (GPIO 21)             │
 │  Reset:   BOOT button             (GPIO 0)              │
 └─────────────────────────────────────────────────────────┘
 ```
