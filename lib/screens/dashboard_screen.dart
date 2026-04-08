@@ -435,8 +435,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             isActive: isActive,
                             hasDetail: hasDetail,
                             subtitle: _deviceSubtitle(device),
-                            onTap: () => _onCardTap(index),
-                            onLongPress: () async {
+                            onTap: _esp32Online ? () => _onCardTap(index) : null,
+                            onLongPress: _esp32Online ? () async {
                               final choice = await showModalBottomSheet<String>(
                                 context: context,
                                 backgroundColor: Colors.transparent,
@@ -497,8 +497,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               if (choice == 'edit') _editDevice(index);
                               if (choice == 'schedule')
                                 _showScheduleSheet(index);
-                            },
-                            onToggle: (val) => _toggleDeviceState(index, val),
+                            } : null,
+                            onToggle: _esp32Online ? (val) => _toggleDeviceState(index, val) : null,
                           )
                           .animate()
                           .fadeIn(delay: (index * 80).ms)
@@ -524,18 +524,18 @@ class _DeviceCard extends StatelessWidget {
   final bool isActive;
   final bool hasDetail;
   final String subtitle;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-  final ValueChanged<bool> onToggle;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final ValueChanged<bool>? onToggle;
 
   const _DeviceCard({
     required this.device,
     required this.isActive,
     required this.hasDetail,
     required this.subtitle,
-    required this.onTap,
-    required this.onLongPress,
-    required this.onToggle,
+    this.onTap,
+    this.onLongPress,
+    this.onToggle,
   });
 
   @override
