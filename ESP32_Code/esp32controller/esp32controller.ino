@@ -127,7 +127,9 @@ struct ScheduleSlot {
 #define MAX_SLOTS 40
 ScheduleSlot  scheduleSlots[MAX_SLOTS];
 int           slotCount         = 0;
-unsigned long lastScheduleCheck = 0;
+unsigned long lastScheduleCheck    = 0;
+unsigned long wifiLostMillis       = 0;     // timestamp when WiFi disconnect was first detected
+bool          offlineShutoffDone   = false;  // true once devices auto-turned-off for this disconnect
 
 // ============================================================
 //  Motor Helpers
@@ -271,6 +273,17 @@ void checkSchedules() {
 
     if (mqttClient.connected()) publishStatus();  // FIX: connection guard
   }
+}
+
+// ============================================================
+//  Offline Auto-Shutoff Helper
+//  Returns true if at least one schedule slot is enabled.
+// ============================================================
+bool hasEnabledSchedules() {
+  for (int i = 0; i < slotCount; i++) {
+    if (scheduleSlots[i].enabled) return true;
+  }
+  return false;
 }
 
 // ============================================================
@@ -507,7 +520,14 @@ void loop() {
 
   if (WiFi.status() != WL_CONNECTED) {
     ledRed();
-    Serial.println("[WiFi] Disconnected — attempting reconnect...");
+
+    // Record the moment WiFi was first detected as lost
+    if (wifiLostMillis == 0) {
+      wifiLostMillis = millis();
+      Serial.println("[WiFi] Disconnected — starting offline timer...");
+    }
+
+    Serial.println("[WiFi] Attempting reconnect...");
 
     // Full disconnect + re-begin is more reliable than WiFi.reconnect() on ESP32
     WiFi.disconnect();
@@ -520,17 +540,49 @@ void loop() {
       delay(500);
       Serial.print(".");
       attempts++;
+
+      // ── Offline auto-shutoff: 15 s with no enabled schedules ──
+      if (!offlineShutoffDone && (millis() - wifiLostMillis >= 15000)) {
+        if (!hasEnabledSchedules()) {
+          Serial.println("\n[Safety] Offline >15 s with no schedules — turning all devices OFF.");
+          motor1Disable();
+          motor2Disable();
+        } else {
+          Serial.println("\n[Safety] Offline >15 s but schedules exist — devices left as-is.");
+        }
+        offlineShutoffDone = true;
+      }
     }
 
     if (WiFi.status() == WL_CONNECTED) {
       Serial.printf("\n[WiFi] Reconnected. IP: %s\n", WiFi.localIP().toString().c_str());
+      // Reset offline tracker
+      wifiLostMillis     = 0;
+      offlineShutoffDone = false;
       // Re-sync NTP after reconnect
       configTime(UTC_OFFSET_SECONDS, 0, "pool.ntp.org", "time.nist.gov");
     } else {
       Serial.println("\n[WiFi] Reconnect failed — will retry.");
+
+      // Check again before the 10s blocking delay in case it hit the 15s mark
+      if (!offlineShutoffDone && (millis() - wifiLostMillis >= 15000)) {
+        if (!hasEnabledSchedules()) {
+          Serial.println("[Safety] Offline >15 s with no schedules — turning all devices OFF.");
+          motor1Disable();
+          motor2Disable();
+        }
+        offlineShutoffDone = true;
+      }
+
       delay(10000); // back off 10 s before next attempt
     }
     return;
+  }
+
+  // WiFi is connected — ensure offline tracker is reset
+  if (wifiLostMillis != 0) {
+    wifiLostMillis     = 0;
+    offlineShutoffDone = false;
   }
 
   if (!mqttClient.connected()) {
